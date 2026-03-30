@@ -12,11 +12,18 @@
       </div>
 
       <div class="actions">
-        <Button label="Cámara Activa" icon="pi pi-video" severity="success" />
+        <Button
+          :label="cameraStatusLabel"
+          icon="pi pi-video"
+          :severity="cameraStatusSeverity"
+          disabled
+        />
         <Button
           :label="monitoringLabel"
           :icon="monitoringIcon"
           :class="isMonitoring ? 'btn-orange' : 'btn-green'"
+          :loading="monitoringLoading"
+          :disabled="isToggleDisabled"
           @click="toggleMonitoring"
         />
         <Button
@@ -25,6 +32,7 @@
           severity="danger"
           @click="reportCameraFailure"
         />
+        <ConfirmDialog />
         <Toast position="bottom-right" />
         <Button label="Cerrar sesión" @click="handleLogout" />
       </div>
@@ -114,6 +122,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 
 import Toast from 'primevue/toast'
 import Card from 'primevue/card'
@@ -121,8 +130,10 @@ import Button from 'primevue/button'
 import Avatar from 'primevue/avatar'
 import Chart from 'primevue/chart'
 import Dropdown from 'primevue/dropdown'
+import ConfirmDialog from 'primevue/confirmdialog'
 
 import { useAuthStore } from '@/stores/auth'
+import { logout as logoutApi } from '@/services/auth.api'
 import { createCameraReport } from '@/services/reports.api'
 import {
   getAgentCurrent,
@@ -130,15 +141,32 @@ import {
   getAgentWeekHistory,
   connectAgentCurrentWS
 } from '@/services/monitoring.api'
+import { 
+  getCaptureStatus, 
+  startCapture, 
+  stopCapture 
+} from '@/services/capture.api'
+import { updateCameraStatus } from '@/services/camera.api'
 
 const auth = useAuthStore()
 const router = useRouter()
 const toast = useToast()
+const confirm = useConfirm()
 
 /* ------------------ LOGOUT ------------------ */
 const handleLogout = async () => {
-  auth.logout()
-  await router.replace({ name: 'login' })
+  try {
+    const token = auth.token
+    if (!token) return
+
+    await logoutApi(token)
+
+    auth.logout()
+    await router.replace({ name: "login" })
+  } catch (error) {
+    console.error("Logout backend failed", error)
+    alert("No se pudo cerrar sesión correctamente. Inténtalo de nuevo.")
+  }
 }
 
 /* ------------------ RANGO ------------------ */
@@ -149,15 +177,93 @@ const ranges = [
 const selectedRange = ref('day')
 
 /* ------------------ MONITOREO ------------------ */
-const isMonitoring = ref(true)
+const isMonitoring = ref(false)
+const monitoringLoading = ref(false)
+const statusLoading = ref(false)
+
 const monitoringLabel = computed(() =>
-  isMonitoring.value ? 'Pausar Monitoreo' : 'Reanudar Monitoreo'
+  isMonitoring.value ? 'Pausar Monitoreo' : 'Activar Monitoreo'
 )
+
 const monitoringIcon = computed(() =>
   isMonitoring.value ? 'pi pi-pause' : 'pi pi-play'
 )
-function toggleMonitoring() {
-  isMonitoring.value = !isMonitoring.value
+
+const cameraStatusLabel = computed(() =>
+  isMonitoring.value ? 'Cámara Activa' : 'Cámara Desactivada'
+)
+
+const cameraStatusSeverity = computed(() =>
+  isMonitoring.value ? 'success' : 'secondary'
+)
+
+const isToggleDisabled = computed(() =>
+  !auth.cameraId || monitoringLoading.value || statusLoading.value
+)
+
+async function loadCameraStatus() {
+  console.log("Llamando status con:", auth.cameraId)
+  if (!auth.cameraId) {
+    isMonitoring.value = false
+    return
+  }
+
+  statusLoading.value = true
+
+  try {
+    const res = await getCaptureStatus(auth.cameraId)
+    isMonitoring.value = res.active
+  } catch (e) {
+    console.error("Error loading camera status:", e)
+    isMonitoring.value = false
+  } finally {
+    statusLoading.value = false
+  }
+}
+
+async function toggleMonitoring() {
+  if (!auth.cameraId || monitoringLoading.value) return
+
+  monitoringLoading.value = true
+
+  try {
+    if (isMonitoring.value) {
+      await stopCapture(auth.cameraId)
+      isMonitoring.value = false
+    } else {
+      await startCapture(auth.cameraId)
+      isMonitoring.value = true
+    }
+  } catch (e) {
+  console.error("Error toggling monitoring:", e)
+
+  const status = e?.response?.status
+  const detail = e?.response?.data?.detail
+
+  let message = 'Intenta nuevamente. Si el problema continúa, reporta una falla de cámara.'
+
+  if (status === 409 && detail === 'Camera is inactive') {
+    message = 'La cámara está inactiva y no puede iniciar monitoreo.'
+  } 
+  else if (status === 409 && detail === 'Camera is in maintenance') {
+    message = 'La cámara está en mantenimiento y no puede iniciar monitoreo.'
+  } 
+  else if (status === 502) {
+    message = 'No se pudo iniciar el monitoreo en el hub.'
+  } 
+  else if (status === 503) {
+    message = 'El hub de cámaras no está disponible.'
+  }
+
+  toast.add({
+    severity: 'warn',
+    summary: 'No se pudo cambiar el monitoreo',
+    detail: message,
+    life: 4000
+  })
+} finally {
+    monitoringLoading.value = false
+  }
 }
 
 /* ------------------ EMOCIÓN ACTUAL ------------------ */
@@ -225,27 +331,54 @@ function connectCurrentEmotionStream() {
 
 /* ------------------ REPORTAR FALLA ------------------ */
 async function reportCameraFailure() {
-  try {
-    await createCameraReport({
-      cameraId: null,
-      agentId: auth.user?.id,
-      description: 'La cámara no muestra imagen'
-    })
-
+  if (!auth.cameraId) {
     toast.add({
-      severity: 'success',
-      summary: 'Reporte enviado',
-      detail: 'Se ha notificado al supervisor.',
-      life: 4500
+      severity: 'warn',
+      summary: 'Sin cámara asignada',
+      detail: 'No se encontró una cámara asociada a este agente.',
+      life: 4000
     })
-  } catch {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'No se pudo enviar el reporte.',
-      life: 4500
-    })
+    return
   }
+
+  confirm.require({
+    message: '¿Deseas reportar una falla de la cámara? La cámara pasará a mantenimiento y se detendrá el monitoreo.',
+    header: 'Confirmar reporte',
+    icon: 'pi pi-exclamation-triangle',
+    acceptLabel: 'Sí',
+    rejectLabel: 'No',
+    acceptClass: 'p-button-danger',
+    accept: async () => {
+      try {
+        await updateCameraStatus(auth.cameraId, { status: 'maintenance' })
+
+        try {
+          await stopCapture(auth.cameraId)
+        } catch (e) {
+          console.warn('No se pudo detener la captura o no había sesión activa:', e)
+        }
+
+        isMonitoring.value = false
+
+        toast.add({
+          severity: 'success',
+          summary: 'Falla reportada',
+          detail: 'La cámara fue puesta en mantenimiento.',
+          life: 4500
+        })
+      } catch (e) {
+        console.error('Error reporting camera failure:', e)
+
+        toast.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: 'No se pudo reportar la falla de la cámara.',
+          life: 4500
+        })
+      }
+    },
+    reject: () => {}
+  })
 }
 
 /* ------------------ CHART ------------------ */
@@ -449,6 +582,7 @@ const weekRangeLabel = computed(() => {
 
 /* ------------------ INIT ------------------ */
 onMounted(async () => {
+  await loadCameraStatus()
   await loadCurrent()
   connectCurrentEmotionStream()
 

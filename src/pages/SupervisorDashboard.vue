@@ -795,62 +795,37 @@ let supervisorWS = null
 
 function connectSupervisorWS() {
   const supervisorId = auth.user.id
-  const supervisorWS = connectSupervisorAgentsWS(supervisorId)
+  supervisorWS = connectSupervisorAgentsWS(supervisorId)
 
   supervisorWS.onmessage = event => {
     const msg = JSON.parse(event.data)
 
-    if (msg.type === "agent-removed") {
-      agents.value = agents.value.filter(a => a.id !== msg.agentId)
-      updateBarData()
-      return
-    }
+    if (msg.type === "supervisor-agents-snapshot") {
+      agents.value = msg.agents.map(a => {
+        const emotionCode = a.emotion
+          ? EMOTION_CODES[a.emotion.toLowerCase()]
+          : null
 
-    if (msg.type === "agent-added") {
-      const emotionCode = msg.emotion
-        ? EMOTION_CODES[msg.emotion.toLowerCase()]
-        : null
-
-      agents.value.push({
-        id: msg.agentId,
-        name: msg.name,
-        email: msg.email,
-        emotion: emotionCode,
-        emotionLabel: emotionCode ? EMOTIONS[emotionCode] : "Sin datos",
-        updatedAt: msg.timestamp ? formatHour(msg.timestamp) : "—"
+        return {
+          id: a.id,
+          name: a.name,
+          email: a.email,
+          emotion: emotionCode,
+          emotionLabel: emotionCode ? EMOTIONS[emotionCode] : "Sin datos",
+          updatedAt: a.timestamp ? formatHour(a.timestamp) : "—"
+        }
       })
 
       updateBarData()
-      return
     }
+  }
 
-    if (msg.type === "agent-emotion-update") {
-      const idx = agents.value.findIndex(a => a.id === msg.agentId)
-      const emotionCode = msg.emotion
-        ? EMOTION_CODES[msg.emotion.toLowerCase()]
-        : null
+  supervisorWS.onclose = () => {
+    console.log("Supervisor WS cerrado")
+  }
 
-      if (idx === -1) {
-        agents.value.push({
-          id: msg.agentId,
-          name: msg.name,
-          email: msg.email,
-          emotion: emotionCode,
-          emotionLabel: emotionCode ? EMOTIONS[emotionCode] : "Sin datos",
-          updatedAt: msg.timestamp ? formatHour(msg.timestamp) : "—"
-        })
-      } else {
-        agents.value[idx] = {
-          ...agents.value[idx],
-          emotion: emotionCode,
-          emotionLabel: emotionCode ? EMOTIONS[emotionCode] : "Sin datos",
-          updatedAt: msg.timestamp ? formatHour(msg.timestamp) : "—"
-        }
-      }
-
-      updateBarData()
-      return
-    }
+  supervisorWS.onerror = error => {
+    console.error("Error en Supervisor WS:", error)
   }
 }
 
@@ -882,7 +857,10 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   if (agentDailyInterval) clearInterval(agentDailyInterval)
-  if (supervisorWS) supervisorWS.close()
+  if (supervisorWS) {
+    supervisorWS.close()
+    supervisorWS = null
+  }
 })
 
 /* ====== Export CSV ====== */

@@ -9,6 +9,7 @@ import Aura from '@primevue/themes/aura'
 import 'primeicons/primeicons.css'
 
 import ToastService from 'primevue/toastservice'
+import ConfirmationService from 'primevue/confirmationservice'
 
 const app = createApp(App)
 
@@ -23,6 +24,7 @@ app.use(PrimeVue, {
   }
 })
 app.use(ToastService)
+app.use(ConfirmationService)
 
 app.config.errorHandler = (err) => console.error('[Vue error]', err)
 
