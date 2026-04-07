@@ -317,19 +317,18 @@
         </header>
 
         <div class="reports-list">
-          <div v-if="cameraReports.length === 0" class="reports-empty">
-            No hay reportes registrados.
+          <div v-if="activeCameraAlerts.length === 0" class="reports-empty">
+            No hay alertas activas de cámara.
           </div>
 
           <article
-            v-for="rep in cameraReports"
+            v-for="rep in activeCameraAlerts"
             :key="rep.id"
-            class="report-item"
-            :class="rep.status === 'pending' ? 'pending' : 'resolved'"
+            class="report-item pending"
           >
             <div class="report-top">
-              <span class="status-pill" :class="rep.status">
-                {{ rep.status === 'pending' ? 'Pendiente' : 'Resuelto' }}
+              <span class="status-pill pending">
+                Activa
               </span>
               <span class="report-time">{{ formatTime(rep.createdAt) }}</span>
             </div>
@@ -374,7 +373,10 @@ import { useAuthStore } from '@/stores/auth'
 import { getAgentsSupervisor, connectSupervisorAgentsWS, getAgentDayHistory } from '@/services/monitoring.api'
 import { getCameras, updateCameraStatus } from '@/services/cameras.api'
 import { getEmotionAlerts } from '@/services/alerts.api'
-import { getCameraReports } from '@/services/reports.api'
+import {
+  getSupervisorActiveCameraAlerts,
+  connectSupervisorActiveCameraAlertsWS
+} from '@/services/camera_alert.api'
 
 const EMOTIONS = {
   1: 'Enojo',
@@ -749,45 +751,41 @@ function closeAlerts () {
 
 /* ====== Reportes de cámara ====== */
 const showReportsPanel = ref(false)
-const cameraReports = ref([]) // lista real de reportes
-const pendingReportsCount = computed(
-  () => cameraReports.value.filter(r => r.status === 'pending').length
-)
+const activeCameraAlerts = ref([])
+const pendingReportsCount = computed(() => activeCameraAlerts.value.length)
 
-/**
- * Backend para reportes de cámara (API o WS):
- * {
- *   id,
- *   cameraName,
- *   status: 'pending' | 'resolved',
- *   description,
- *   agentName,
- *   createdAt
- * }
- */
-function normalizeReport (msg) {
+function normalizeCameraAlert(msg) {
   const created =
-    msg.createdAt instanceof Date ? msg.createdAt : new Date(msg.createdAt || Date.now())
+    msg.created_at instanceof Date
+      ? msg.created_at
+      : new Date(msg.created_at || Date.now())
+
+  const camera = cameras.value.find(c => String(c.id) === String(msg.camera_id))
+  const agent = agents.value.find(a => String(a.id) === String(msg.agent_id))
 
   return {
-    id: msg.id,
-    cameraName: msg.cameraName,
-    status: msg.status || 'pending',
+    id: msg._id,
+    cameraId: msg.camera_id,
+    agentId: msg.agent_id,
+    cameraName: camera?.name || msg.camera_id,
+    agentName: agent?.name || msg.agent_id,
+    status: msg.status || 'active',
     description: msg.description,
-    agentName: msg.agentName,
     createdAt: created
   }
 }
 
-async function loadReports () {
+async function loadActiveCameraAlerts() {
   try {
-    // BACKEND:
-    // GET /camera-reports → lista
-    const data = await getCameraReports()
-    cameraReports.value = Array.isArray(data) ? data.map(normalizeReport) : []
+    const supervisorId = auth.user.id
+    const data = await getSupervisorActiveCameraAlerts(supervisorId)
+
+    activeCameraAlerts.value = Array.isArray(data)
+      ? data.map(normalizeCameraAlert)
+      : []
   } catch (error) {
-    console.error('Error cargando reportes de cámara', error)
-    cameraReports.value = []
+    console.error('Error cargando alertas activas de cámara', error)
+    activeCameraAlerts.value = []
   }
 }
 
@@ -829,9 +827,35 @@ function connectSupervisorWS() {
   }
 }
 
+let supervisorCameraAlertsWS = null
+
+function connectSupervisorCameraAlertsWS() {
+  const supervisorId = auth.user.id
+  supervisorCameraAlertsWS = connectSupervisorActiveCameraAlertsWS(supervisorId)
+
+  supervisorCameraAlertsWS.onmessage = event => {
+    const msg = JSON.parse(event.data)
+
+    if (msg.type === 'supervisor-camera-active-alerts-snapshot') {
+      activeCameraAlerts.value = Array.isArray(msg.alerts)
+        ? msg.alerts.map(normalizeCameraAlert)
+        : []
+    }
+  }
+
+  supervisorCameraAlertsWS.onclose = () => {
+    console.log('Supervisor Camera Alerts WS cerrado')
+  }
+
+  supervisorCameraAlertsWS.onerror = error => {
+    console.error('Error en Supervisor Camera Alerts WS:', error)
+  }
+}
+
 function openReports () {
   showReportsPanel.value = true
 }
+
 function closeReports () {
   showReportsPanel.value = false
 }
@@ -850,16 +874,25 @@ onMounted(async () => {
   await loadAgents()
   updateBarData()
   connectSupervisorWS()
+
   await loadCameras()
   await loadAlerts()
-  await loadReports()
+
+  await loadActiveCameraAlerts()
+  connectSupervisorCameraAlertsWS()
 })
 
 onBeforeUnmount(() => {
   if (agentDailyInterval) clearInterval(agentDailyInterval)
+
   if (supervisorWS) {
     supervisorWS.close()
     supervisorWS = null
+  }
+
+  if (supervisorCameraAlertsWS) {
+    supervisorCameraAlertsWS.close()
+    supervisorCameraAlertsWS = null
   }
 })
 
