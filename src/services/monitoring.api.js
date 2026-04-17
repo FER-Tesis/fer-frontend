@@ -28,3 +28,12 @@ export async function getAgentsSupervisor(supervisorId) {
 export function connectSupervisorAgentsWS(supervisorId) {
   return wsCentral(`/monitoring/ws/supervisor/${supervisorId}/agents`)
 }
+
+export async function getSupervisorCameras(supervisorId) {
+  const { data } = await httpCentral.get(`/monitoring/supervisor/${supervisorId}/cameras`)
+  return data
+}
+
+export function connectSupervisorCamerasWS(supervisorId) {
+  return wsCentral(`/monitoring/ws/supervisor/${supervisorId}/cameras`)
+}

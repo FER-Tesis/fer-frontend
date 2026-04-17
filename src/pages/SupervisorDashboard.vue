@@ -141,10 +141,10 @@
             </div>
             <Button
               icon="pi pi-download"
-              label="Exportar datos"
+              label="Exportar"
               outlined
               size="small"
-              @click="exportCsv"
+              @click="openExportDialog"
             />
           </div>
         </template>
@@ -216,7 +216,14 @@
               <template #body="{ data }">
                 <span class="row">
                   <i
-                    :class="['pi', data.status === 'active' ? 'pi-video' : 'pi-video-off']"
+                    :class="[
+                      'pi',
+                      data.status === 'active'
+                        ? 'pi-video'
+                        : data.status === 'maintenance'
+                        ? 'pi-wrench'
+                        : 'pi-video-off'
+                    ]"
                     style="margin-right: 0.5rem"
                   />
                   {{ data.name }}
@@ -229,23 +236,60 @@
             <Column header="Estado">
               <template #body="{ data }">
                 <Tag
-                  :value="data.status === 'active' ? 'Activa' : 'Inactiva'"
-                  :severity="data.status === 'active' ? 'success' : 'danger'"
+                  :value="
+                    data.status === 'active'
+                      ? 'Activa'
+                      : data.status === 'inactive'
+                      ? 'Inactiva'
+                      : data.status === 'maintenance'
+                      ? 'Mantenimiento'
+                      : '—'
+                  "
+                  :severity="
+                    data.status === 'active'
+                      ? 'success'
+                      : data.status === 'inactive'
+                      ? 'danger'
+                      : data.status === 'maintenance'
+                      ? 'warning'
+                      : 'secondary'
+                  "
+                  rounded
+                />
+              </template>
+            </Column>
+
+            <Column header="En monitoreo">
+              <template #body="{ data }">
+                <Tag
+                  :value="data.monitoringActive ? 'Sí' : 'No'"
+                  :severity="data.monitoringActive ? 'success' : 'secondary'"
                   rounded
                 />
               </template>
             </Column>
 
             <Column field="last" header="Última Conexión" />
-            <Column field="location" header="Ubicación" />
 
             <Column header="Acciones" style="min-width: 12rem">
               <template #body="{ data }">
                 <div class="row gap">
-                  <Button icon="pi pi-eye" text rounded @click="viewStream(data)" />
                   <Button
-                    :label="data.status === 'active' ? 'Desactivar' : 'Activar'"
-                    :severity="data.status === 'active' ? 'warning' : 'success'"
+                    :label="
+                      data.status === 'active'
+                        ? 'Desactivar'
+                        : data.status === 'inactive'
+                        ? 'Activar'
+                        : 'No disponible'
+                    "
+                    :severity="
+                      data.status === 'active'
+                        ? 'warning'
+                        : data.status === 'inactive'
+                        ? 'success'
+                        : 'secondary'
+                    "
+                    :disabled="data.status === 'maintenance' || !data.id"
                     size="small"
                     outlined
                     @click="toggleCamera(data)"
@@ -347,6 +391,112 @@
       </aside>
     </Transition>
 
+    <Dialog
+      v-model:visible="showExportDialog"
+      modal
+      header="Exportar reporte"
+      :style="{ width: '40rem', maxWidth: '95vw' }"
+    >
+      <div class="export-form">
+        <div class="field-block">
+          <label class="field-label">Tipo de exportación</label>
+          <Dropdown
+            v-model="exportForm.type"
+            :options="exportTypeOptions"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Selecciona una opción"
+            class="w-full"
+          />
+        </div>
+      
+        <div v-if="exportForm.type === 'current'" class="export-hint">
+          Se exportarán los agentes visibles actualmente en la tabla, respetando los filtros aplicados.
+        </div>
+      
+        <template v-if="exportForm.type === 'team' || exportForm.type === 'agent'">
+          <div v-if="exportForm.type === 'agent'" class="field-block">
+            <label class="field-label">Agente</label>
+            <Dropdown
+              v-model="exportForm.agentId"
+              :options="exportAgentOptions"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="Selecciona un agente"
+              class="w-full"
+            />
+          </div>
+        
+          <div class="field-block">
+            <label class="field-label">Rango de fechas</label>
+            <Calendar
+              v-model="exportForm.dateRange"
+              selectionMode="range"
+              :manualInput="false"
+              dateFormat="dd/mm/yy"
+              showIcon
+              class="w-full"
+            />
+          </div>
+        
+          <div class="field-grid">
+            <div class="field-block">
+              <label class="field-label">Agrupación</label>
+              <Dropdown
+                v-model="exportForm.groupBy"
+                :options="groupByOptions"
+                optionLabel="label"
+                optionValue="value"
+                placeholder="Selecciona agrupación"
+                class="w-full"
+              />
+            </div>
+          
+            <div class="field-block">
+              <label class="field-label">Formato</label>
+              <Dropdown
+                v-model="exportForm.format"
+                :options="formatOptions"
+                optionLabel="label"
+                optionValue="value"
+                placeholder="Selecciona formato"
+                class="w-full"
+              />
+            </div>
+          </div>
+        
+          <div class="field-block">
+            <label class="field-label">Agregados del reporte</label>
+            <MultiSelect
+              v-model="exportForm.aggregates"
+              :options="aggregateOptions"
+              optionLabel="label"
+              optionValue="value"
+              display="chip"
+              placeholder="Selecciona uno o más agregados"
+              class="w-full"
+            />
+          </div>
+        </template>
+      </div>
+    
+      <template #footer>
+        <div class="row-end gap">
+          <Button
+            label="Cancelar"
+            text
+            @click="closeExportDialog"
+          />
+          <Button
+            label="Descargar archivo"
+            icon="pi pi-download"
+            :disabled="!canExport"
+            @click="handleExport"
+          />
+        </div>
+      </template>
+    </Dialog>
+
     <Toast position="bottom-right" />
   </div>
 </template>
@@ -367,11 +517,14 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Toast from 'primevue/toast'
 import Chart from 'primevue/chart'
+import Dialog from 'primevue/dialog'
+import Calendar from 'primevue/calendar'
+import MultiSelect from 'primevue/multiselect'
 
 import { useAuthStore } from '@/stores/auth'
 
-import { getAgentsSupervisor, connectSupervisorAgentsWS, getAgentDayHistory } from '@/services/monitoring.api'
-import { getCameras, updateCameraStatus } from '@/services/cameras.api'
+import { getAgentsSupervisor, connectSupervisorAgentsWS, getAgentDayHistory, getSupervisorCameras, connectSupervisorCamerasWS } from '@/services/monitoring.api'
+import { updateCameraStatus } from '@/services/camera.api'
 import { getEmotionAlerts } from '@/services/alerts.api'
 import {
   getSupervisorActiveCameraAlerts,
@@ -635,42 +788,44 @@ function viewDetails (agent) {
 /* ====== Gestión de cámaras (API + fallback) ====== */
 const cameras = ref([])
 
-const mockCameras = [
-  { id: 1, name: 'Cámara Estación 1', agent: 'Ana García', status: 'active', last: '14:35', location: 'Norte' },
-  { id: 2, name: 'Cámara Estación 2', agent: 'Carlos López', status: 'active', last: '14:34', location: 'Sur' },
-  { id: 3, name: 'Cámara Estación 3', agent: 'María Rodríguez', status: 'inactive', last: '14:10', location: 'Este' }
-]
-
 async function loadCameras () {
   try {
-    /**
-     * BACKEND:
-     * GET /cameras → [
-     *  { id, name, agent, status, last, location }
-     * ]
-     */
-    const data = await getCameras()
-    cameras.value = Array.isArray(data) && data.length ? data : mockCameras
+    const supervisorId = auth.user.id
+    const data = await getSupervisorCameras(supervisorId)
+
+    cameras.value = Array.isArray(data)
+      ? data.map(c => ({
+          id: c.camera_id,
+          name: c.camera_name,
+          agent: c.agent_name,
+          status: c.status,
+          last: c.last_connection ? formatHour(c.last_connection) : '—',
+          monitoringActive: !!c.monitoring_active
+        }))
+      : []
   } catch (error) {
     console.error('Error cargando cámaras', error)
-    cameras.value = mockCameras
+    cameras.value = []
   }
 }
 
 async function toggleCamera (cam) {
+  if (!cam.id || cam.status === 'maintenance') return
+
   const newStatus = cam.status === 'active' ? 'inactive' : 'active'
 
   try {
-    // BACKEND:
-    // PATCH /cameras/:id/status { status }
-    await updateCameraStatus(cam.id, newStatus)
+    await updateCameraStatus(cam.id, { status: newStatus })
+
     cam.status = newStatus
+
     toast.add({
       severity: cam.status === 'active' ? 'success' : 'warn',
       summary: cam.name,
       detail: cam.status === 'active' ? 'Cámara activada' : 'Cámara desactivada',
       life: 2500
     })
+
   } catch (error) {
     console.error('Error actualizando estado de cámara', error)
     toast.add({
@@ -860,6 +1015,38 @@ function closeReports () {
   showReportsPanel.value = false
 }
 
+let supervisorCamerasWS = null
+
+function connectSupervisorCamerasSocket() {
+  const supervisorId = auth.user.id
+  supervisorCamerasWS = connectSupervisorCamerasWS(supervisorId)
+
+  supervisorCamerasWS.onmessage = event => {
+    const msg = JSON.parse(event.data)
+
+    if (msg.type === 'supervisor-cameras-snapshot') {
+      cameras.value = Array.isArray(msg.cameras)
+        ? msg.cameras.map(c => ({
+            id: c.camera_id,
+            name: c.camera_name,
+            agent: c.agent_name,
+            status: c.status,
+            last: c.last_connection ? formatHour(c.last_connection) : '—',
+            monitoringActive: !!c.monitoring_active
+          }))
+        : []
+    }
+  }
+
+  supervisorCamerasWS.onclose = () => {
+    console.log('Supervisor Cameras WS cerrado')
+  }
+
+  supervisorCamerasWS.onerror = error => {
+    console.error('Error en Supervisor Cameras WS:', error)
+  }
+}
+
 function formatTime (date) {
   if (!(date instanceof Date)) {
     const d = new Date(date)
@@ -869,6 +1056,214 @@ function formatTime (date) {
   return date.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
 }
 
+/* ====== Exportación ====== */
+const showExportDialog = ref(false)
+
+const exportForm = ref({
+  type: null,          // current | team | agent
+  agentId: null,
+  dateRange: null,     // [startDate, endDate]
+  groupBy: 'day',      // day | week | month
+  format: 'csv',       // csv | xlsx
+  aggregates: []
+})
+
+const exportTypeOptions = [
+  { label: 'Tabla actual', value: 'current' },
+  { label: 'Reporte del equipo', value: 'team' },
+  { label: 'Reporte por agente', value: 'agent' }
+]
+
+const groupByOptions = [
+  { label: 'Por día', value: 'day' },
+  { label: 'Por semana', value: 'week' },
+  { label: 'Por mes', value: 'month' }
+]
+
+const formatOptions = [
+  { label: 'CSV', value: 'csv' },
+  { label: 'Excel', value: 'xlsx' }
+]
+
+const aggregateOptions = [
+  { label: 'Conteo por emoción', value: 'emotion_count' },
+  { label: 'Porcentaje por emoción', value: 'emotion_percentage' },
+  { label: 'Emoción predominante', value: 'dominant_emotion' },
+]
+
+const exportAgentOptions = computed(() =>
+  filteredAgents.value.map(a => ({
+    label: a.name,
+    value: a.id
+  }))
+)
+
+const canExport = computed(() => {
+  if (exportForm.value.type === 'current') return true
+
+  if (exportForm.value.type === 'team') {
+    return (
+      Array.isArray(exportForm.value.dateRange) &&
+      exportForm.value.dateRange.length === 2 &&
+      exportForm.value.dateRange[0] &&
+      exportForm.value.dateRange[1] &&
+      exportForm.value.groupBy &&
+      exportForm.value.aggregates.length > 0
+    )
+  }
+
+  if (exportForm.value.type === 'agent') {
+    return (
+      !!exportForm.value.agentId &&
+      Array.isArray(exportForm.value.dateRange) &&
+      exportForm.value.dateRange.length === 2 &&
+      exportForm.value.dateRange[0] &&
+      exportForm.value.dateRange[1] &&
+      exportForm.value.groupBy &&
+      exportForm.value.aggregates.length > 0
+    )
+  }
+
+  return false
+})
+
+function openExportDialog () {
+  resetExportForm()
+  showExportDialog.value = true
+}
+
+function closeExportDialog () {
+  showExportDialog.value = false
+}
+
+function resetExportForm () {
+  exportForm.value = {
+    type: null,
+    agentId: null,
+    dateRange: null,
+    groupBy: 'day',
+    format: 'csv',
+    aggregates: []
+  }
+}
+
+function formatDateForFile(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return ''
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function escapeCsvValue(value) {
+  const stringValue = String(value ?? '')
+  if (
+    stringValue.includes(',') ||
+    stringValue.includes('"') ||
+    stringValue.includes('\n')
+  ) {
+    return `"${stringValue.replace(/"/g, '""')}"`
+  }
+  return stringValue
+}
+
+function downloadCsv(filename, rows) {
+  const csv = rows
+    .map(row => row.map(cell => escapeCsvValue(cell)).join(','))
+    .join('\n')
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function exportCurrentTableCsv () {
+  const header = ['Agente', 'Estado emocional', 'Última actualización']
+  const rows = filteredAgents.value.map(a => [
+    a.name,
+    a.emotionLabel,
+    a.updatedAt
+  ])
+
+  downloadCsv('tabla_actual_agentes.csv', [header, ...rows])
+
+  toast.add({
+    severity: 'success',
+    summary: 'Exportación completada',
+    detail: 'Se descargó la tabla actual.',
+    life: 3000
+  })
+
+  closeExportDialog()
+}
+
+async function exportTeamMetrics () {
+  const [startDate, endDate] = exportForm.value.dateRange || []
+
+  // TODO BACKEND:
+  // Aquí deberías llamar un endpoint tipo:
+  // getTeamMetricsExport({
+  //   supervisor_id: auth.user.id,
+  //   start_date: formatDateForFile(startDate),
+  //   end_date: formatDateForFile(endDate),
+  //   group_by: exportForm.value.groupBy,
+  //   aggregates: exportForm.value.aggregates,
+  //   format: exportForm.value.format
+  // })
+
+  toast.add({
+    severity: 'warn',
+    summary: 'Backend pendiente',
+    detail:
+      `La UI ya está lista. Falta conectar el endpoint para exportar métricas del equipo (${formatDateForFile(startDate)} a ${formatDateForFile(endDate)}).`,
+    life: 5000
+  })
+}
+
+async function exportAgentMetrics () {
+  const [startDate, endDate] = exportForm.value.dateRange || []
+  const selected = agents.value.find(a => a.id === exportForm.value.agentId)
+
+  // TODO BACKEND:
+  // Aquí deberías llamar un endpoint tipo:
+  // getAgentMetricsExport({
+  //   agent_id: exportForm.value.agentId,
+  //   start_date: formatDateForFile(startDate),
+  //   end_date: formatDateForFile(endDate),
+  //   group_by: exportForm.value.groupBy,
+  //   aggregates: exportForm.value.aggregates,
+  //   format: exportForm.value.format
+  // })
+
+  toast.add({
+    severity: 'warn',
+    summary: 'Backend pendiente',
+    detail:
+      `La UI ya está lista. Falta conectar el endpoint para exportar métricas de ${selected?.name || 'el agente'} (${formatDateForFile(startDate)} a ${formatDateForFile(endDate)}).`,
+    life: 5000
+  })
+}
+
+async function handleExport () {
+  if (exportForm.value.type === 'current') {
+    exportCurrentTableCsv()
+    return
+  }
+
+  if (exportForm.value.type === 'team') {
+    await exportTeamMetrics()
+    return
+  }
+
+  if (exportForm.value.type === 'agent') {
+    await exportAgentMetrics()
+  }
+}
+
 /* ====== Ciclo de vida ====== */
 onMounted(async () => {
   await loadAgents()
@@ -876,6 +1271,8 @@ onMounted(async () => {
   connectSupervisorWS()
 
   await loadCameras()
+  connectSupervisorCamerasSocket()
+
   await loadAlerts()
 
   await loadActiveCameraAlerts()
@@ -890,27 +1287,16 @@ onBeforeUnmount(() => {
     supervisorWS = null
   }
 
+  if (supervisorCamerasWS) {
+    supervisorCamerasWS.close()
+    supervisorCamerasWS = null
+  }
+
   if (supervisorCameraAlertsWS) {
     supervisorCameraAlertsWS.close()
     supervisorCameraAlertsWS = null
   }
 })
-
-/* ====== Export CSV ====== */
-function exportCsv () {
-  const header = ['Agente', 'Estado emocional', 'Última actualización']
-  const rows = filteredAgents.value.map(a => [a.name, a.emotionLabel, a.updatedAt])
-  const csv = [header, ...rows]
-    .map(r => r.join(','))
-    .join('\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'agentes.csv'
-  a.click()
-  URL.revokeObjectURL(url)
-}
 </script>
 
 <style scoped>
@@ -1343,5 +1729,54 @@ function exportCsv () {
 .slide-left-leave-to {
   transform: translateX(100%);
   opacity: 0;
+}
+
+.export-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.field-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.export-hint {
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  color: #4b5563;
+  font-size: 0.9rem;
+}
+
+.row-end {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.w-full {
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
