@@ -139,6 +139,8 @@
                 Monitoreo detallado del equipo con filtros avanzados
               </div>
             </div>
+
+            <!-- DESCARGA AUTOMATIZADA DE REPORTES (deprecado)
             <Button
               icon="pi pi-download"
               label="Exportar"
@@ -146,6 +148,27 @@
               size="small"
               @click="openExportDialog"
             />
+            -->
+
+            <!-- DESCARGA DE REPORTES MANUAL -->
+            <div class="row gap">
+              <Button
+                icon="pi pi-download"
+                label="Exportar"
+                outlined
+                size="small"
+                @click="openExportDialog"
+              />
+               
+              <Button
+                v-if="readyExportJob"
+                icon="pi pi-download"
+                label="Descargar reporte"
+                severity="success"
+                size="small"
+                @click="downloadReadyExport"
+              />
+            </div>
           </div>
         </template>
 
@@ -530,6 +553,11 @@ import {
   getSupervisorActiveCameraAlerts,
   connectSupervisorActiveCameraAlertsWS
 } from '@/services/camera_alert.api'
+import {
+  createSupervisorExportJob,
+  getExportJobStatus,
+  getExportDownloadUrl
+} from '@/services/export.api'
 
 const EMOTIONS = {
   1: 'Enojo',
@@ -1057,7 +1085,10 @@ function formatTime (date) {
 }
 
 /* ====== Exportación ====== */
+let exportStatusTimer = null
+
 const showExportDialog = ref(false)
+const readyExportJob = ref(null)
 
 const exportForm = ref({
   type: null,          // current | team | agent
@@ -1155,113 +1186,156 @@ function formatDateForFile(date) {
   return `${year}-${month}-${day}`
 }
 
-function escapeCsvValue(value) {
-  const stringValue = String(value ?? '')
-  if (
-    stringValue.includes(',') ||
-    stringValue.includes('"') ||
-    stringValue.includes('\n')
-  ) {
-    return `"${stringValue.replace(/"/g, '""')}"`
-  }
-  return stringValue
-}
-
-function downloadCsv(filename, rows) {
-  const csv = rows
-    .map(row => row.map(cell => escapeCsvValue(cell)).join(','))
-    .join('\n')
-
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
-function exportCurrentTableCsv () {
-  const header = ['Agente', 'Estado emocional', 'Última actualización']
-  const rows = filteredAgents.value.map(a => [
-    a.name,
-    a.emotionLabel,
-    a.updatedAt
-  ])
-
-  downloadCsv('tabla_actual_agentes.csv', [header, ...rows])
-
-  toast.add({
-    severity: 'success',
-    summary: 'Exportación completada',
-    detail: 'Se descargó la tabla actual.',
-    life: 3000
-  })
-
-  closeExportDialog()
-}
-
-async function exportTeamMetrics () {
-  const [startDate, endDate] = exportForm.value.dateRange || []
-
-  // TODO BACKEND:
-  // Aquí deberías llamar un endpoint tipo:
-  // getTeamMetricsExport({
-  //   supervisor_id: auth.user.id,
-  //   start_date: formatDateForFile(startDate),
-  //   end_date: formatDateForFile(endDate),
-  //   group_by: exportForm.value.groupBy,
-  //   aggregates: exportForm.value.aggregates,
-  //   format: exportForm.value.format
-  // })
-
-  toast.add({
-    severity: 'warn',
-    summary: 'Backend pendiente',
-    detail:
-      `La UI ya está lista. Falta conectar el endpoint para exportar métricas del equipo (${formatDateForFile(startDate)} a ${formatDateForFile(endDate)}).`,
-    life: 5000
-  })
-}
-
-async function exportAgentMetrics () {
-  const [startDate, endDate] = exportForm.value.dateRange || []
-  const selected = agents.value.find(a => a.id === exportForm.value.agentId)
-
-  // TODO BACKEND:
-  // Aquí deberías llamar un endpoint tipo:
-  // getAgentMetricsExport({
-  //   agent_id: exportForm.value.agentId,
-  //   start_date: formatDateForFile(startDate),
-  //   end_date: formatDateForFile(endDate),
-  //   group_by: exportForm.value.groupBy,
-  //   aggregates: exportForm.value.aggregates,
-  //   format: exportForm.value.format
-  // })
-
-  toast.add({
-    severity: 'warn',
-    summary: 'Backend pendiente',
-    detail:
-      `La UI ya está lista. Falta conectar el endpoint para exportar métricas de ${selected?.name || 'el agente'} (${formatDateForFile(startDate)} a ${formatDateForFile(endDate)}).`,
-    life: 5000
-  })
-}
-
-async function handleExport () {
+function buildExportPayload () {
   if (exportForm.value.type === 'current') {
-    exportCurrentTableCsv()
-    return
+    return {
+      type: 'current',
+      format: exportForm.value.format,
+      snapshot: filteredAgents.value.map(agent => ({
+        name: agent.name,
+        emotion_label: agent.emotionLabel,
+        updated_at: agent.updatedAt
+      }))
+    }
   }
 
-  if (exportForm.value.type === 'team') {
-    await exportTeamMetrics()
-    return
+  const [startDate, endDate] = exportForm.value.dateRange || []
+
+  const basePayload = {
+    type: exportForm.value.type,
+    format: exportForm.value.format,
+    start_date: formatDateForFile(startDate),
+    end_date: formatDateForFile(endDate),
+    group_by: exportForm.value.groupBy,
+    aggregates: exportForm.value.aggregates
   }
 
   if (exportForm.value.type === 'agent') {
-    await exportAgentMetrics()
+    return {
+      ...basePayload,
+      agent_id: exportForm.value.agentId
+    }
   }
+
+  return basePayload
+}
+
+function clearExportPolling () {
+  if (exportStatusTimer) {
+    clearTimeout(exportStatusTimer)
+    exportStatusTimer = null
+  }
+}
+
+function scheduleExportStatusCheck (jobId, attempt = 1) {
+  clearExportPolling()
+
+  let delay = 3000
+
+  if (attempt === 1) delay = 700
+  else if (attempt === 2) delay = 1500
+  else if (attempt === 3) delay = 2500
+
+  exportStatusTimer = setTimeout(async () => {
+    try {
+      const job = await getExportJobStatus(jobId)
+
+      /* DESCARGA AUTOMATICA AL COMPLETAR EL JOB 
+      if (job.status === 'completed') {
+        clearExportPolling()
+
+        toast.add({
+          severity: 'success',
+          summary: 'Reporte listo',
+          detail: `Archivo disponible: ${job.file_name || 'reporte'}`,
+          life: 5000
+        })
+      
+        window.open(getExportDownloadUrl(jobId), '_blank')
+        return
+      }
+      */
+
+      /* DESCARGA MANUAL AL COMPLETAR EL JOB */
+      if (job.status === 'completed') {
+        clearExportPolling()
+      
+        readyExportJob.value = {
+          jobId,
+          fileName: job.file_name || 'reporte'
+        }
+      
+        toast.add({
+          severity: 'success',
+          summary: 'Reporte listo',
+          detail: `Archivo disponible: ${job.file_name || 'reporte'}. Haz clic en Descargar.`,
+          life: 5000
+        })
+      
+        return
+      }
+
+      if (job.status === 'failed') {
+        clearExportPolling()
+
+        toast.add({
+          severity: 'error',
+          summary: 'Error de exportación',
+          detail: job.error || 'No se pudo generar el archivo.',
+          life: 5000
+        })
+        return
+      }
+
+      scheduleExportStatusCheck(jobId, attempt + 1)
+    } catch (error) {
+      clearExportPolling()
+      console.error('Error consultando estado del job', error)
+
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: 'No se pudo consultar el estado de la exportación.',
+        life: 4000
+      })
+    }
+  }, delay)
+}
+
+async function handleExport () {
+  try {
+    const supervisorId = auth.user.id
+    const payload = buildExportPayload()
+
+    const result = await createSupervisorExportJob(supervisorId, payload)
+
+    closeExportDialog()
+
+    toast.add({
+      severity: 'info',
+      summary: 'Generando reporte',
+      detail: 'Puedes seguir usando la plataforma mientras se prepara el archivo.',
+      life: 4000
+    })
+
+    scheduleExportStatusCheck(result.job_id)
+  } catch (error) {
+    console.error('Error creando exportación', error)
+
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'No se pudo iniciar la exportación.',
+      life: 4000
+    })
+  }
+}
+
+function downloadReadyExport () {
+  if (!readyExportJob.value) return
+
+  window.open(getExportDownloadUrl(readyExportJob.value.jobId), '_blank')
+  readyExportJob.value = null
 }
 
 /* ====== Ciclo de vida ====== */
@@ -1280,6 +1354,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  clearExportPolling()
+  
   if (agentDailyInterval) clearInterval(agentDailyInterval)
 
   if (supervisorWS) {

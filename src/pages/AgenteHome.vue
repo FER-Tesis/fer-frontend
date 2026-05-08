@@ -190,7 +190,7 @@ const monitoringIcon = computed(() =>
 )
 
 const cameraStatusLabel = computed(() =>
-  isMonitoring.value ? 'Cámara Activa' : 'Cámara Desactivada'
+  isMonitoring.value ? 'Monitoreo Activo' : 'Monitoreo Desactivado'
 )
 
 const cameraStatusSeverity = computed(() =>
