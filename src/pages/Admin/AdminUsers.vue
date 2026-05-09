@@ -14,6 +14,7 @@
       </div>
     </div>
     <Toast position="bottom-right" />
+    <ConfirmDialog class="user-confirm-dialog" />
 
     <!-- KPIs -->
     <section class="kpis">
@@ -298,12 +299,14 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import Toast from 'primevue/toast'
+import ConfirmDialog from 'primevue/confirmdialog'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 import { useRouter } from 'vue-router'
 
 import {
   getUsers,
-  getUserSummary,
+  getUsersMetrics,
   createUser,
   updateUser,
   deleteUser
@@ -317,6 +320,7 @@ import {
 } from '@/services/relations.api'
 
 const toast = useToast()
+const confirm = useConfirm()
 const router = useRouter()
 
 function goBack () {
@@ -377,7 +381,7 @@ async function loadUsers () {
 
 async function loadKpis () {
   try {
-    const data = await getUserSummary()
+    const data = await getUsersMetrics()
     kpis.value.totalUsers = data.totalUsers ?? 0
     kpis.value.activeAgents = data.activeAgents ?? 0
     kpis.value.activeAlerts = 0
@@ -650,29 +654,40 @@ function viewUser (user) {
 }
 
 /* ====== Eliminar usuario ====== */
-async function deleteUserConfirm (user) {
-  const ok = window.confirm(`¿Eliminar al usuario ${user.name}?`)
-  if (!ok) return
+function deleteUserConfirm (user) {
+  confirm.require({
+    message: `¿Estás seguro de eliminar al usuario ${user.name}?`,
+    header: 'Confirmar eliminación',
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'Cancelar',
+    acceptLabel: 'Eliminar',
+    acceptClass: 'confirm-delete-btn',
+    rejectClass: 'confirm-cancel-btn',
 
-  try {
-    await deleteUser(user.id)
-    users.value = users.value.filter(u => u.id !== user.id)
-    kpis.value.totalUsers = users.value.length
-    toast.add({
-      severity: 'success',
-      summary: 'Usuario eliminado',
-      detail: user.email,
-      life: 3500
-    })
-  } catch (e) {
-    console.error(e)
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'No se pudo eliminar el usuario.',
-      life: 4000
-    })
-  }
+    accept: async () => {
+      try {
+        await deleteUser(user.id)
+        users.value = users.value.filter(u => u.id !== user.id)
+        kpis.value.totalUsers = users.value.length
+
+        toast.add({
+          severity: 'success',
+          summary: 'Usuario eliminado',
+          detail: user.email,
+          life: 3500
+        })
+      } catch (e) {
+        console.error(e)
+
+        toast.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: 'No se pudo eliminar el usuario.',
+          life: 4000
+        })
+      }
+    }
+  })
 }
 
 /* ====== Mounted ====== */
@@ -1225,6 +1240,84 @@ onMounted(() => {
 
 </style>
 
+<style>
+/* PrimeVue ConfirmDialog alineado al diseño de AdminUsers */
+.user-confirm-dialog {
+  border: 1px solid #ebeef3;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
+  font-family: inherit;
+  color: #374151;
+}
 
+.user-confirm-dialog .p-dialog-header {
+  padding: 18px 22px 8px;
+  border-bottom: 0;
+}
 
+.user-confirm-dialog .p-dialog-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: #111827;
+}
 
+.user-confirm-dialog .p-dialog-content {
+  padding: 8px 22px 12px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.user-confirm-dialog .p-confirmdialog-icon {
+  width: auto !important;
+  height: auto !important;
+  color: #dc2626;
+  font-size: 18px;
+  margin-right: 10px;
+}
+
+.user-confirm-dialog .p-confirmdialog-message {
+  margin-left: 0;
+  line-height: 1.5;
+}
+
+.user-confirm-dialog .p-dialog-footer {
+  padding: 10px 22px 18px;
+  border-top: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.user-confirm-dialog .p-button {
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.user-confirm-dialog .confirm-cancel-btn {
+  background: #eef2f7;
+  border-color: #eef2f7;
+  color: #374151;
+}
+
+.user-confirm-dialog .confirm-delete-btn {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
+}
+
+.user-confirm-dialog .confirm-cancel-btn:hover {
+  background: #e5e7eb;
+  border-color: #e5e7eb;
+  color: #374151;
+}
+
+.user-confirm-dialog .confirm-delete-btn:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #fff;
+}
+</style>

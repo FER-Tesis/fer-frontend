@@ -11,7 +11,6 @@ import AdminLayout from '@/pages/Admin/AdminLayout.vue'
 import AdminLanding from '@/pages/Admin/AdminLanding.vue'
 import AdminUsers from '@/pages/Admin/AdminUsers.vue'
 import AdminCameras from '@/pages/Admin/AdminCameras.vue'
-import AdminCamerasDashboard from '@/pages/Admin/AdminCamerasDashboard.vue'
 
 const routes = [
   // 🔸 Login (solo invitados)
@@ -65,14 +64,6 @@ const routes = [
     path: '/admin/camaras',
     name: 'admin.cameras',
     component: AdminCameras,
-    meta: { requiresAuth: true, role: 'admin' }
-  },
-
-  // 🔸 ADMIN – Dashboard de Cámaras (página completa, SIN layout)
-  {
-    path: '/admin/dashboard-camaras',
-    name: 'admin.cameras.dashboard',
-    component: AdminCamerasDashboard,
     meta: { requiresAuth: true, role: 'admin' }
   },
 

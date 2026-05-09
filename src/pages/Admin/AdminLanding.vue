@@ -8,7 +8,7 @@
         </div>
 
         <h3 class="card-title">Gestión de Usuarios</h3>
-        <p class="card-desc">Administra usuarios, roles y permisos del sistema</p>
+        <p class="card-desc">Administra usuarios, roles, asignaciones de equipos y estados</p>
 
         <div class="chips">
           <div class="chip">
@@ -17,7 +17,7 @@
           </div>
           <div class="chip">
             <b>{{ activeAgents }}</b>
-            <span>Usuarios Activos</span>
+            <span>Agentes Activos</span>
           </div>
         </div>
 
@@ -35,15 +35,15 @@
         </div>
 
         <h3 class="card-title">Gestión de Cámaras</h3>
-        <p class="card-desc">Administra cámaras, estados y configuración del sistema</p>
+        <p class="card-desc">Administra cámaras, estados y configuración de estas mismas</p>
 
         <div class="chips">
           <div class="chip">
-            <b>5</b>
+            <b>{{ totalCameras }}</b>
             <span>Cámaras Totales</span>
           </div>
           <div class="chip">
-            <b>3</b>
+            <b>{{ activeCameras }}</b>
             <span>Operativas</span>
           </div>
         </div>
@@ -52,33 +52,6 @@
           label="Acceder a Gestión de Cámaras"
           class="btn btn-blue"
           @click="go('admin.cameras')"
-        />
-      </section>
-
-      <!-- Dashboard -->
-      <section class="card">
-        <div class="icon" style="background:#F3EAFF;color:#8b5cf6">
-          <i class="pi pi-chart-bar"></i>
-        </div>
-
-        <h3 class="card-title">Dashboard de Cámaras</h3>
-        <p class="card-desc">Análisis avanzado con gráficos y estadísticas en tiempo real</p>
-
-        <div class="chips">
-          <div class="chip">
-            <b>98%</b>
-            <span>Disponibilidad</span>
-          </div>
-          <div class="chip">
-            <b>6</b>
-            <span>Activas Ahora</span>
-          </div>
-        </div>
-
-        <Button
-          label="Acceder al Dashboard"
-          class="btn btn-purple"
-          @click="go('admin.cameras.dashboard')"
         />
       </section>
     </div>
@@ -90,19 +63,26 @@ import Button from 'primevue/button'
 import { useRouter } from 'vue-router'
 
 import { ref, onMounted } from 'vue'
-import { getUserSummary } from '@/services/user.api'
+import { getUsersMetrics } from '@/services/user.api'
+import { getCamerasMetrics } from '@/services/camera.api'
 
 const router = useRouter()
 const go = (name) => router.push({ name })
 
 const totalUsers = ref(0)
 const activeAgents = ref(0)
+const totalCameras = ref(0)
+const activeCameras = ref(0)
 
 onMounted(async () => {
   try {
-    const data = await getUserSummary()
+    const data = await getUsersMetrics()
     totalUsers.value = data.totalUsers ?? 0
     activeAgents.value = data.activeAgents ?? 0
+
+    const camData = await getCamerasMetrics()
+    totalCameras.value = camData.totalCameras ?? 0
+    activeCameras.value = camData.activeCameras ?? 0
   } catch (e) {
     console.error('Error cargando KPIs', e)
   }
@@ -118,18 +98,20 @@ onMounted(async () => {
 
 /* Grid centrado y con anchos de tarjeta tipo mockup */
 .grid {
-  display: grid;
+  display: flex;
+  flex-direction: row;
   gap: 28px;
   justify-content: center;
-  grid-template-columns: repeat(3, 340px);
+  align-items: stretch;
+  flex-wrap: wrap;
 }
 
-/* Tarjeta elegante */
 .card {
   background: #fff;
   border: 1px solid #eceff3;
   border-radius: 16px;
   padding: 24px;
+  width: 340px;
   display: flex;
   flex-direction: column;
   align-items: center;

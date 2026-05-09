@@ -20,7 +20,7 @@ export async function deleteUser(id) {
   return res.data
 }
 
-export async function getUserSummary() {
-  const res = await httpUser.get('/user/summary')
+export async function getUsersMetrics() {
+  const res = await httpUser.get('/user/users/metrics')
   return res.data
 }
