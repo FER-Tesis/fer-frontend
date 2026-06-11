@@ -598,12 +598,21 @@ const agents = ref([])
 function formatHour(ts) {
   if (!ts) return ''
 
-  const cleaned = ts.replace(/(\.\d{3})\d+$/, '$1')
+  let cleaned = String(ts)
 
-  const utcTs = cleaned.endsWith('Z') ? cleaned : cleaned + 'Z'
+  cleaned = cleaned.replace(/(\.\d{3})\d+/, '$1')
+
+  const utcTs =
+    cleaned.endsWith('Z') || cleaned.includes('+00:00')
+      ? cleaned
+      : cleaned + 'Z'
 
   const d = new Date(utcTs)
-  if (Number.isNaN(d.getTime())) return ''
+
+  if (Number.isNaN(d.getTime())) {
+    console.warn("Fecha inválida:", ts, "->", utcTs)
+    return ''
+  }
 
   return d.toLocaleString('es-PE', {
     timeZone: 'America/Lima',
@@ -980,12 +989,15 @@ function connectSupervisorWS() {
 
   supervisorWS.onmessage = event => {
     const msg = JSON.parse(event.data)
+    console.log("WS RAW EVENT:", event.data)
+    console.log("WS PARSED:", msg)
 
     if (msg.type === "supervisor-agents-snapshot") {
       agents.value = msg.agents.map(a => {
         const emotionCode = a.emotion
           ? EMOTION_CODES[a.emotion.toLowerCase()]
           : null
+        const formattedTimestamp = a.timestamp ? formatHour(a.timestamp) : "—"
 
         return {
           id: a.id,
@@ -993,7 +1005,7 @@ function connectSupervisorWS() {
           email: a.email,
           emotion: emotionCode,
           emotionLabel: emotionCode ? EMOTIONS[emotionCode] : "Sin datos",
-          updatedAt: a.timestamp ? formatHour(a.timestamp) : "—"
+          updatedAt: formattedTimestamp || "—"
         }
       })
 

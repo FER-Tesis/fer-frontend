@@ -492,12 +492,19 @@ function setChart(xsOrLabels, values, isWeek = false) {
     return
   }
 
+  /*
   const maxVisible = getVisibleHourIndex()
 
   const filteredData = values.map((v, i) => {
     if (i > maxVisible) return null
     return v ? emotionToLevel(v) : null
   })
+  */
+
+  // REEMPLAZO
+  const filteredData = values.map(v =>
+    v ? emotionToLevel(v) : null
+  )
 
   chartData.value = {
     labels: xsOrLabels,
@@ -538,6 +545,7 @@ async function buildChart() {
   try {
     if (isDay) {
       const { labels, values } = await getAgentDayHistory(id)
+      console.log("Day history:", { labels, values })
       setChart(labels, values, false)
     } else {
       const data = await getAgentWeekHistory(id)
