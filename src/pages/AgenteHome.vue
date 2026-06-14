@@ -393,13 +393,27 @@ const dailyChartInterval = ref(null)
 function emotionToLevel(emotion) {
   return {
     anger: 1,
+    angry: 1,
     disgust: 2,
     fear: 3,
     sad: 4,
     neutral: 5,
     surprise: 6,
     happy: 7
-  }[emotion]
+  }[emotion] ?? null
+}
+
+function emotionToColor(emotion) {
+  return {
+    anger: '#ef4444',
+    angry: '#ef4444',
+    disgust: '#f97316',
+    fear: '#eab308',
+    sad: '#3b82f6',
+    neutral: '#6b7280',
+    surprise: '#a855f7',
+    happy: '#22c55e'
+  }[emotion] ?? '#9ca3af'
 }
 
 function getVisibleHourIndex() {
@@ -428,26 +442,21 @@ function getChartOptions(isDay) {
         ticks: {
           stepSize: 1,
           callback: (value) => {
-            if (value >= 1 && value <= 7) return value;
-            return "";
+            if (value >= 1 && value <= 7) return value
+            return ''
           }
         }
       },
-      x: isDay
-        ? {
-            type: 'category',
-            title: { display: true, text: 'Hora del día' }
-          }
-        : {
-            type: 'category',
-            labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'],
-            title: { display: true, text: weekRangeLabel.value }
-          }
+      x: {
+        type: 'category',
+        title: {
+          display: true,
+          text: isDay ? 'Hora del día' : weekRangeLabel.value
+        }
+      }
     },
-
     plugins: {
       legend: { display: false },
-
       tooltip: {
         enabled: true,
         callbacks: {
@@ -463,6 +472,7 @@ function getChartOptions(isDay) {
               6: 'Sorpresa',
               7: 'Felicidad'
             }
+
             return `Emoción: ${emotionMap[ctx.raw] || 'Desconocido'}`
           }
         }
@@ -471,24 +481,36 @@ function getChartOptions(isDay) {
   }
 }
 
+function formatWeekLabels(labels) {
+  return labels.map(label => {
+    const date = new Date(label + 'T00:00:00')
+    return date.toLocaleDateString('es-PE', { weekday: 'short' })
+  })
+}
+
 function setChart(xsOrLabels, values, isWeek = false) {
   if (isWeek) {
+    const levels = values.map(v => emotionToLevel(v))
+    const pointColors = values.map(v => emotionToColor(v))
+
     chartData.value = {
-      labels: xsOrLabels,
+      labels: formatWeekLabels(xsOrLabels),
       datasets: [
         {
           label: 'Nivel emocional',
-          data: values.map(v => emotionToLevel(v)),
-          borderColor: '#22c55e',
-          backgroundColor: 'rgba(34,197,94,0.20)',
+          data: levels,
+          borderColor: '#94a3b8',
+          backgroundColor: 'rgba(148,163,184,0.15)',
           tension: 0.4,
           fill: true,
           pointRadius: 6,
           pointHoverRadius: 9,
-          pointBackgroundColor: '#22c55e'
+          pointBackgroundColor: pointColors,
+          pointBorderColor: pointColors
         }
       ]
     }
+
     return
   }
 
@@ -501,10 +523,8 @@ function setChart(xsOrLabels, values, isWeek = false) {
   })
   */
 
-  // REEMPLAZO
-  const filteredData = values.map(v =>
-    v ? emotionToLevel(v) : null
-  )
+  const filteredData = values.map(v => v ? emotionToLevel(v) : null)
+  const pointColors = values.map(v => v ? emotionToColor(v) : '#9ca3af')
 
   chartData.value = {
     labels: xsOrLabels,
@@ -512,14 +532,15 @@ function setChart(xsOrLabels, values, isWeek = false) {
       {
         label: 'Nivel emocional',
         data: filteredData,
-        borderColor: '#22c55e',
-        backgroundColor: 'rgba(34,197,94,0.15)',
+        borderColor: '#94a3b8',
+        backgroundColor: 'rgba(148,163,184,0.15)',
         tension: 0.4,
         fill: true,
         spanGaps: true,
         pointRadius: (ctx) => ctx.raw == null ? 0 : 5,
         pointHoverRadius: (ctx) => ctx.raw == null ? 0 : 8,
-        pointBackgroundColor: '#22c55e'
+        pointBackgroundColor: pointColors,
+        pointBorderColor: pointColors
       }
     ]
   }
@@ -625,13 +646,13 @@ onUnmounted(() => {
 .state-chip{background:#e7f5ee;color:#15803d;padding:.4rem .8rem;border-radius:999px;font-weight:600;}
 
 .legend{display:flex;gap:1rem;font-size:.85rem;margin-top:.5rem;color:#6b7280;}
-.lvl.l1 { color: #ef4444; }
-.lvl.l2 { color: #f97316; }
-.lvl.l3 { color: #eab308; }
-.lvl.l4 { color: #3b82f6; }
-.lvl.l5 { color: #6b7280; }
-.lvl.l6 { color: #10b981; }
-.lvl.l7 { color: #22c55e; }
+.lvl.l1 { color: #ef4444; } /* Enojo */
+.lvl.l2 { color: #f97316; } /* Disgusto */
+.lvl.l3 { color: #eab308; } /* Miedo */
+.lvl.l4 { color: #3b82f6; } /* Tristeza */
+.lvl.l5 { color: #6b7280; } /* Neutral */
+.lvl.l6 { color: #a855f7; } /* Sorpresa */
+.lvl.l7 { color: #22c55e; } /* Felicidad */
 
 .tips{margin-top:1rem;border-radius:12px;}
 .tips-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem;}

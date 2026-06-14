@@ -174,9 +174,13 @@
 
         <template #content>
           <div class="filters">
-            <span class="p-input-icon-left">
-              <i class="pi pi-search" />
-              <InputText v-model="searchTerm" placeholder="Buscar por nombre..." class="w-16rem" />
+            <span class="search-wrapper">
+              <i class="pi pi-search search-icon" />
+              <InputText
+                v-model="searchTerm"
+                placeholder="Buscar por nombre..."
+                class="w-16rem search-input"
+              />
             </span>
 
             <Dropdown
@@ -207,7 +211,7 @@
 
             <Column header="Estado Emocional">
               <template #body="{ data }">
-                <Tag :value="data.emotionLabel" :severity="emotionSeverity(data.emotion)" rounded />
+                <Tag :value="data.emotionLabel" :class="emotionClass(data.emotion)" rounded />
               </template>
             </Column>
 
@@ -340,30 +344,47 @@
 
         <div class="alerts-list">
           <div v-if="alerts.length === 0" class="alerts-empty">
-            No hay alertas emocionales activas.
+            No hay alertas emocionales pendientes.
           </div>
 
           <article
             v-for="al in alerts"
             :key="al.id"
             class="alert-item"
-            :class="al.emotionLevel <= 2 ? 'high' : 'medium'"
+            :class="al.severity === 'high' ? 'high' : 'medium'"
           >
             <div class="alert-top">
-              <span class="alert-pill" :class="al.emotionLevel <= 2 ? 'pill-high' : 'pill-med'">
-                {{ al.emotionLabel }}
+              <span
+                class="alert-pill"
+                :class="al.severity === 'high' ? 'pill-high' : 'pill-med'"
+              >
+                {{ al.severityLabel }}
               </span>
+            
               <span class="alert-time">{{ formatTime(al.createdAt) }}</span>
             </div>
-
+          
             <div class="alert-title">
               {{ al.agentName }}
             </div>
+          
             <div class="alert-desc">
-              {{ al.message || 'Nivel de estrés elevado detectado por la cámara.' }}
+              {{ al.alertType }}
             </div>
+          
             <div class="alert-foot">
-              <span v-if="al.cameraName">Cámara: <b>{{ al.cameraName }}</b></span>
+              <span>Estado: <b>Pendiente</b></span>
+            </div>
+          
+            <div class="alert-actions">
+              <Button
+                label="Marcar como revisada"
+                icon="pi pi-check"
+                size="small"
+                severity="success"
+                outlined
+                @click="acknowledgeAlert(al)"
+              />
             </div>
           </article>
         </div>
@@ -548,7 +569,11 @@ import { useAuthStore } from '@/stores/auth'
 
 import { getAgentsSupervisor, connectSupervisorAgentsWS, getAgentDayHistory, getSupervisorCameras, connectSupervisorCamerasWS } from '@/services/monitoring.api'
 import { updateCameraStatus } from '@/services/camera.api'
-import { getEmotionAlerts } from '@/services/alerts.api'
+import {
+  getSupervisorPendingEmotionAlerts,
+  acknowledgeEmotionAlert,
+  connectSupervisorPendingEmotionAlertsWS
+} from '@/services/emotion_alert.api'
 import {
   getSupervisorActiveCameraAlerts,
   connectSupervisorActiveCameraAlertsWS
@@ -577,6 +602,36 @@ const EMOTION_CODES = {
   neutral: 5,
   surprise: 6,
   happy: 7
+}
+
+const EMOTION_COLORS = {
+  1: '#ef4444', // Enojo
+  2: '#f97316', // Disgusto
+  3: '#eab308', // Miedo
+  4: '#3b82f6', // Tristeza
+  5: '#6b7280', // Neutral
+  6: '#a855f7', // Sorpresa
+  7: '#22c55e'  // Felicidad
+}
+
+function emotionClass(v) {
+  return {
+    1: 'emotion-anger',
+    2: 'emotion-disgust',
+    3: 'emotion-fear',
+    4: 'emotion-sad',
+    5: 'emotion-neutral',
+    6: 'emotion-surprise',
+    7: 'emotion-happy'
+  }[v] || 'emotion-neutral'
+}
+
+function hexToRgba(hex, alpha = 0.25) {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
 const auth = useAuthStore()
@@ -653,17 +708,7 @@ async function loadAgents () {
 
 const emotionKpiClass = computed(() => {
   if (!selectedAgent.value) return ''
-
-  const e = selectedAgent.value.emotion
-  return {
-    1: 'kpi-anger',
-    2: 'kpi-disgust',
-    3: 'kpi-fear',
-    4: 'kpi-sad',
-    5: 'kpi-neutral',
-    6: 'kpi-surprise',
-    7: 'kpi-happy'
-  }[e] || ''
+  return emotionClass(selectedAgent.value.emotion)
 })
 
 /* ====== Chart general ====== */
@@ -682,15 +727,9 @@ function updateBarData () {
     datasets: [
       {
         data: counts,
-        backgroundColor: [
-          '#fecaca', // Enojo (1)
-          '#fed7aa', // Disgusto (2)
-          '#fef3c7', // Miedo (3)
-          '#bfdbfe', // Tristeza (4)
-          '#e5e7eb', // Neutral (5)
-          '#ddd6fe', // Sorpresa (6)
-          '#bbf7d0'  // Felicidad (7)
-        ],
+        backgroundColor: emotionOrder.map(code => hexToRgba(EMOTION_COLORS[code], 0.30)),   
+        borderColor: emotionOrder.map(code => EMOTION_COLORS[code]),
+        borderWidth: 1.5,
         borderRadius: 8
       }
     ]
@@ -731,19 +770,6 @@ const filteredAgents = computed(() =>
 )
 
 /* ====== Utilidades ====== */
-function emotionSeverity (v) {
-  const map = {
-    1: 'danger',     // Enojo
-    2: 'help',       // Disgusto (puedes usar 'warning' si prefieres)
-    3: 'warning',    // Miedo
-    4: 'secondary',  // Tristeza
-    5: 'info',       // Neutral
-    6: 'primary',    // Sorpresa
-    7: 'success'     // Felicidad
-  }
-  return map[v] || 'secondary'
-}
-
 function getInitials (name) {
   const p = name.split(' ')
   return (p[0][0] + (p[1]?.[0] || '')).toUpperCase()
@@ -772,7 +798,14 @@ const agentChartOptions = ref({
   responsive: true,
   maintainAspectRatio: false,
   plugins: { legend: { display: false } },
-  scales: { x: { grid: { display: false } }, y: { min: 1, max: 7, ticks: { stepSize: 1 } } }
+  scales: { x: { grid: { display: false } }, y: { min: 1, max: 7.5, 
+                                                                    ticks: {
+                                                                      stepSize: 1,
+                                                                      callback: (value) => {
+                                                                        if (value >= 1 && value <= 7) return value
+                                                                        return ''
+                                                                      }
+                                                                    } } }
 })
 
 async function buildAgentSeries(agent) {
@@ -788,21 +821,26 @@ async function buildAgentSeries(agent) {
       return EMOTION_CODES[v.toLowerCase()] || null
     })
 
+    const pointColors = numericValues.map(v =>
+      v ? EMOTION_COLORS[v] : '#9ca3af'
+    )
+
     agentChartData.value = {
       labels,
       datasets: [
         {
           label: 'Nivel emocional',
           data: numericValues,
-          borderColor: '#22c55e',
-          backgroundColor: 'rgba(34,197,94,0.15)',
+          borderColor: '#94a3b8',
+          backgroundColor: 'rgba(148,163,184,0.15)',
           borderWidth: 2,
           tension: 0.35,
           fill: true,
           spanGaps: true,
           pointRadius: (ctx) => ctx.raw == null ? 0 : 5,
           pointHoverRadius: (ctx) => ctx.raw == null ? 0 : 8,
-          pointBackgroundColor: '#22c55e'
+          pointBackgroundColor: pointColors,
+          pointBorderColor: pointColors
         }
       ]
     }
@@ -885,8 +923,8 @@ function viewStream (cam) {
 }
 
 /* ====== ALERTAS EMOCIONALES ====== */
-const alerts = ref([]) // lista de alertas emocionales
-const alertsCount = computed(() => alerts.value.filter(a => !a.read).length)
+const alerts = ref([])
+const alertsCount = computed(() => alerts.value.length)
 
 const showAlertsPanel = ref(false)
 
@@ -903,42 +941,78 @@ const showAlertsPanel = ref(false)
  *   read
  * }
  */
-function normalizeAlert (msg) {
-  const level = msg.emotionLevel ?? msg.emotion ?? 3
+function normalizeEmotionAlert(msg) {
   const created =
-    msg.createdAt instanceof Date ? msg.createdAt : new Date(msg.createdAt || Date.now())
+    msg.created_at instanceof Date
+      ? msg.created_at
+      : new Date(msg.created_at || msg.createdAt || Date.now())
 
   return {
-    id: msg.id,
-    agentName: msg.agentName,
-    emotionLabel: msg.emotionLabel,
-    emotionLevel: level, // 1 = Estresado, 2 = Tenso, ...
-    cameraName: msg.cameraName,
-    message: msg.message,
-    createdAt: created,
-    read: !!msg.read
+    id: msg._id || msg.id,
+    agentId: msg.agent_id || msg.agentId,
+    agentName: msg.agent_name || msg.agentName || 'Agente',
+    agentEmail: msg.agent_email || msg.agentEmail || '',
+    ruleType: msg.rule_type || msg.ruleType,
+    alertType: msg.alert_type || msg.alertType || 'Alerta emocional',
+    severity: msg.severity || 'medium',
+    severityLabel: msg.severity_label || msg.severityLabel || getSeverityLabel(msg.severity),
+    status: msg.status || 'pending',
+    createdAt: created
   }
 }
 
-async function loadAlerts () {
+function getSeverityLabel(severity) {
+  return {
+    low: 'Baja',
+    medium: 'Media',
+    high: 'Alta'
+  }[severity] || 'Media'
+}
+
+async function loadPendingEmotionAlerts () {
   try {
-    // BACKEND:
-    // GET /alerts/emotions → lista de alertas
-    const data = await getEmotionAlerts()
-    alerts.value = Array.isArray(data) ? data.map(normalizeAlert) : []
+    const supervisorId = auth.user.id
+    const data = await getSupervisorPendingEmotionAlerts(supervisorId)
+
+    alerts.value = Array.isArray(data)
+      ? data.map(normalizeEmotionAlert)
+      : []
   } catch (error) {
-    console.error('Error cargando alertas', error)
+    console.error('Error cargando alertas emocionales pendientes', error)
     alerts.value = []
   }
 }
 
 function openAlerts () {
   showAlertsPanel.value = true
-  // marcar como leídas al abrir el panel
-  alerts.value = alerts.value.map(a => ({ ...a, read: true }))
 }
+
 function closeAlerts () {
   showAlertsPanel.value = false
+}
+
+async function acknowledgeAlert(alert) {
+  try {
+    await acknowledgeEmotionAlert(alert.id)
+
+    alerts.value = alerts.value.filter(a => a.id !== alert.id)
+
+    toast.add({
+      severity: 'success',
+      summary: 'Alerta revisada',
+      detail: `La alerta de ${alert.agentName} fue marcada como revisada.`,
+      life: 2500
+    })
+  } catch (error) {
+    console.error('Error revisando alerta emocional', error)
+
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'No se pudo actualizar la alerta emocional.',
+      life: 3000
+    })
+  }
 }
 
 /* ====== Reportes de cámara ====== */
@@ -1044,6 +1118,31 @@ function connectSupervisorCameraAlertsWS() {
 
   supervisorCameraAlertsWS.onerror = error => {
     console.error('Error en Supervisor Camera Alerts WS:', error)
+  }
+}
+
+let supervisorEmotionAlertsWS = null
+
+function connectSupervisorEmotionAlertsWS() {
+  const supervisorId = auth.user.id
+  supervisorEmotionAlertsWS = connectSupervisorPendingEmotionAlertsWS(supervisorId)
+
+  supervisorEmotionAlertsWS.onmessage = event => {
+    const msg = JSON.parse(event.data)
+
+    if (msg.type === 'supervisor-emotion-pending-alerts-snapshot') {
+      alerts.value = Array.isArray(msg.alerts)
+        ? msg.alerts.map(normalizeEmotionAlert)
+        : []
+    }
+  }
+
+  supervisorEmotionAlertsWS.onclose = () => {
+    console.log('Supervisor Emotion Alerts WS cerrado')
+  }
+
+  supervisorEmotionAlertsWS.onerror = error => {
+    console.error('Error en Supervisor Emotion Alerts WS:', error)
   }
 }
 
@@ -1359,7 +1458,8 @@ onMounted(async () => {
   await loadCameras()
   connectSupervisorCamerasSocket()
 
-  await loadAlerts()
+  await loadPendingEmotionAlerts()
+  connectSupervisorEmotionAlertsWS()
 
   await loadActiveCameraAlerts()
   connectSupervisorCameraAlertsWS()
@@ -1383,6 +1483,11 @@ onBeforeUnmount(() => {
   if (supervisorCameraAlertsWS) {
     supervisorCameraAlertsWS.close()
     supervisorCameraAlertsWS = null
+  }
+
+  if (supervisorEmotionAlertsWS) {
+    supervisorEmotionAlertsWS.close()
+    supervisorEmotionAlertsWS = null
   }
 })
 </script>
@@ -1448,6 +1553,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: 2fr 1fr;
   gap: 1rem;
+  margin-bottom: 1rem;
 }
 .subtitle-sm {
   color: #6b7280;
@@ -1470,36 +1576,6 @@ onBeforeUnmount(() => {
   font-size: 0.85rem;
   margin-top: 0.5rem;
   color: #6b7280;
-}
-
-/* COLORES DE TEXTO PARA EMOCIONES */
-
-.legend-bars .l1 {
-  color: #ef4444;
-}
-
-.legend-bars .l2 {
-  color: #f59e0b;
-}
-
-.legend-bars .l3 {
-  color: #9ca3af;
-}
-
-.legend-bars .l4 {
-  color: #3b82f6;
-}
-
-.legend-bars .l5 {
-  color: #6b7280;
-}
-
-.legend-bars .l6 {
-  color: #8b5cf6;
-}
-
-.legend-bars .l7 {
-  color: #10b981;
 }
 
 .filters {
@@ -1544,40 +1620,56 @@ onBeforeUnmount(() => {
   margin-top: 0.1rem;
 }
 
-/* Pasteles para KPI de emoción */
-.kpi-anger {
-  background: #ffe5e5;
-  border: 1px solid #ffb3b3;
+/* Colores emociones */
+
+.legend-bars .l1 { color: #ef4444; }
+.legend-bars .l2 { color: #f97316; }
+.legend-bars .l3 { color: #eab308; }
+.legend-bars .l4 { color: #3b82f6; }
+.legend-bars .l5 { color: #6b7280; }
+.legend-bars .l6 { color: #a855f7; }
+.legend-bars .l7 { color: #22c55e; }
+
+:deep(.emotion-anger) {
+  background: #fee2e2 !important;
+  color: #b91c1c !important;
+  border-color: #fecaca !important;
 }
 
-.kpi-disgust {
-  background: #fff1e6;
-  border: 1px solid #ffd1a8;
+:deep(.emotion-disgust) {
+  background: #ffedd5 !important;
+  color: #c2410c !important;
+  border-color: #fdba74 !important;
 }
 
-.kpi-fear {
-  background: #fffbe6;
-  border: 1px solid #f7e9a4;
+:deep(.emotion-fear) {
+  background: #fef9c3 !important;
+  color: #a16207 !important;
+  border-color: #fde047 !important;
 }
 
-.kpi-sad {
-  background: #e7f0ff;
-  border: 1px solid #c8ddff;
+:deep(.emotion-sad) {
+  background: #dbeafe !important;
+  color: #1d4ed8 !important;
+  border-color: #93c5fd !important;
 }
 
-.kpi-neutral {
-  background: #f3f4f6;
-  border: 1px solid #e4e5e7;
+:deep(.emotion-neutral) {
+  background: #f3f4f6 !important;
+  color: #4b5563 !important;
+  border-color: #d1d5db !important;
 }
 
-.kpi-surprise {
-  background: #f6e8ff;
-  border: 1px solid #e5caff;
+:deep(.emotion-surprise) {
+  background: #f3e8ff !important;
+  color: #7e22ce !important;
+  border-color: #d8b4fe !important;
 }
 
-.kpi-happy {
-  background: #e6ffed;
-  border: 1px solid #c0f5cf;
+:deep(.emotion-happy) {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+  border-color: #86efac !important;
 }
 
 :deep(.p-avatar) {
@@ -1860,6 +1952,29 @@ onBeforeUnmount(() => {
 
 .w-full {
   width: 100%;
+}
+
+.search-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  color: #64748b;
+  z-index: 2;
+}
+
+:deep(.search-input) {
+  padding-left: 2.4rem !important;
+}
+
+.alert-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
 }
 
 @media (max-width: 768px) {

@@ -538,10 +538,15 @@ async function submitUser () {
     resetForm()
   } catch (e) {
     console.error(e)
+    
+    const message =
+      e.response?.data?.detail ||
+      'No se pudo guardar el usuario.'
+    
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: 'No se pudo guardar el usuario.',
+      detail: message,
       life: 4000
     })
   } finally {

@@ -28,17 +28,17 @@
 
         <form @submit.prevent="onSubmit" class="form">
           <label class="label">Correo corporativo</label>
-          <span class="p-input-icon-left w-full">
-            <i class="pi pi-envelope" ></i>
+          <div class="input-icon-wrapper">
+            <i class="pi pi-envelope"></i>
             <InputText
               v-model.trim="email"
               type="email"
-              class="w-full"
+              class="w-full input-with-icon"
               placeholder="usuario@empresa.com"
               autocomplete="username"
               required
             />
-          </span>
+          </div>
 
           <label class="label">Contraseña</label>
           <Password
@@ -104,8 +104,15 @@ async function onSubmit () {
 .login-grid {
   display: grid;
   grid-template-columns: 1.15fr 1fr;
-  min-height: 100vh;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
   background: #f3f5f7;
+}
+
+.pane-left,
+.pane-right {
+  height: 100%;
 }
 
 /* ===== PANEL IZQUIERDO ===== */
@@ -169,9 +176,26 @@ async function onSubmit () {
 }
 .btn-primary:hover { background: #268E45 !important; }
 
+.input-icon-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.input-icon-wrapper i {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6b7280;
+  z-index: 2;
+}
+
+:deep(.input-with-icon) {
+  padding-left: 38px !important;
+}
+
 /* PrimeVue compact look */
 :deep(.p-inputtext){ height: 38px; padding: 0 12px; }
-:deep(.p-input-icon-left > .p-inputtext){ padding-left: 2.25rem; }
 :deep(.p-password .p-inputtext){ height: 38px; padding: 0 40px 0 12px; }
 :deep(.p-password .p-password-panel){ display: none !important; }
 

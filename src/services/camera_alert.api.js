@@ -3,11 +3,11 @@ import { wsAlert } from './ws.alert'
 
 export async function getSupervisorActiveCameraAlerts(supervisorId) {
   const { data } = await httpAlert.get(
-    `/supervisor/${supervisorId}/active`
+    `/camera/alert/supervisor/${supervisorId}/active`
   )
   return data
 }
 
 export function connectSupervisorActiveCameraAlertsWS(supervisorId) {
-  return wsAlert(`/ws/supervisor/${supervisorId}/active`)
+  return wsAlert(`/camera/alert/ws/supervisor/${supervisorId}/active`)
 }
