@@ -196,6 +196,7 @@ async function onSubmit () {
 
 /* PrimeVue compact look */
 :deep(.p-inputtext){ height: 38px; padding: 0 12px; width: 100%; }
+:deep(.p-password){ height: 38px; width: 100%; }
 :deep(.p-password .p-inputtext){ height: 38px; padding: 0 40px 0 12px; width: 100%; }
 :deep(.p-password .p-password-panel){ display: none !important; }
 
