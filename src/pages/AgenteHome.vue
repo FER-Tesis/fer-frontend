@@ -274,7 +274,7 @@ const emotionEmoji = computed(() => {
   const map = {
     happy: '😊',
     neutral: '😐',
-    angry: '😠',
+    anger: '😠',
     sad: '😢',
     fear: '😨',
     disgust: '🤢',
@@ -287,7 +287,7 @@ const emotionLabel = computed(() => {
   const map = {
     happy: 'Felicidad',
     neutral: 'Neutral',
-    angry: 'Enojo',
+    anger: 'Enojo',
     sad: 'Tristeza',
     fear: 'Miedo',
     disgust: 'Disgusto',
@@ -393,7 +393,7 @@ const dailyChartInterval = ref(null)
 function emotionToLevel(emotion) {
   return {
     anger: 1,
-    angry: 1,
+    anger: 1,
     disgust: 2,
     fear: 3,
     sad: 4,
@@ -406,7 +406,7 @@ function emotionToLevel(emotion) {
 function emotionToColor(emotion) {
   return {
     anger: '#ef4444',
-    angry: '#ef4444',
+    anger: '#ef4444',
     disgust: '#f97316',
     fear: '#eab308',
     sad: '#3b82f6',
