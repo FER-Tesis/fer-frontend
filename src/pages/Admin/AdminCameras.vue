@@ -464,19 +464,22 @@ async function submitCamera () {
     await loadCameras()
     await loadKpis()
   } catch (e) {
-  console.error(e)
+    console.error(e)  
 
-  const status = e.response?.status
-  const message =
-    e.response?.data?.detail ||
-    'No se pudo guardar la cámara.'
+    const status = e.response?.status
+    const message =
+      e.response?.data?.detail ||
+      'No se pudo guardar la cámara.' 
 
-  toast.add({
-    severity: 'error',
-    summary: status === 409 ? 'Registro duplicado' : 'Error',
-    detail: message,
-    life: 4000
-  })
+    toast.add({
+      severity: 'error',
+      summary: status === 409 ? 'Registro duplicado' : 'Error',
+      detail: message,
+      life: 4000
+    })
+  } finally {
+    savingCamera.value = false
+  }
 }
 
 async function changeCameraStatus (camera, newStatus) {
