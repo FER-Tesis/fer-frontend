@@ -464,12 +464,24 @@ async function submitCamera () {
     await loadCameras()
     await loadKpis()
   } catch (e) {
-    console.error(e)  
+    console.error('ERROR COMPLETO:', e)
+    console.error('STATUS:', e.response?.status)
+    console.error('DATA:', e.response?.data)
 
     const status = e.response?.status
-    const message =
-      e.response?.data?.detail ||
-      'No se pudo guardar la cámara.' 
+    const data = e.response?.data
+
+    let message = 'No se pudo guardar la cámara.'
+
+    if (typeof data?.detail === 'string') {
+      message = data.detail
+    } else if (Array.isArray(data?.detail)) {
+      message = data.detail.map(item => item.msg).join(', ')
+    } else if (typeof data === 'string') {
+      message = data
+    } else if (data?.message) {
+      message = data.message
+    }
 
     toast.add({
       severity: 'error',
@@ -479,7 +491,6 @@ async function submitCamera () {
     })
   } finally {
     savingCamera.value = false
-  }
 }
 
 async function changeCameraStatus (camera, newStatus) {
