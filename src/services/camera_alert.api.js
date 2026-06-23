@@ -8,6 +8,11 @@ export async function getSupervisorActiveCameraAlerts(supervisorId) {
   return data
 }
 
+export async function getAdminActiveCameraAlerts () {
+  const { data } = await httpAlert.get('/camera/alert/admin/alerts/active')
+  return data
+}
+
 export function connectSupervisorActiveCameraAlertsWS(supervisorId) {
   return wsAlert(`/camera/alert/ws/supervisor/${supervisorId}/active`)
 }

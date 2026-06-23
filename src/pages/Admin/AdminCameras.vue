@@ -18,10 +18,10 @@
         </div>
       </div>
 
-      <button class="btn-ghost alerts">
+      <button class="btn-ghost alerts" @click="openCameraAlerts">
         <i class="pi pi-bell"></i>
         Alertas
-        <span class="badge">{{ alerts }}</span>
+        <span v-if="cameraAlertsCount > 0" class="badge">{{ cameraAlertsCount }}</span>
       </button>
     </header>
 
@@ -230,6 +230,55 @@
         </div>
       </div>
     </div>
+
+    <!-- PANEL LATERAL DE ALERTAS DE CÁMARA -->
+    <div v-if="showCameraAlertsPanel" class="drawer-overlay" @click="closeCameraAlerts"></div>
+
+    <aside v-if="showCameraAlertsPanel" class="reports-drawer">
+      <header class="reports-header">
+        <div>
+          <h3>Alertas de Cámara</h3>
+          <p class="reports-sub">
+            Alertas activas reportadas sobre problemas técnicos de cámaras
+          </p>
+        </div>
+      
+        <button class="iconbtn" @click="closeCameraAlerts">
+          <i class="pi pi-times"></i>
+        </button>
+      </header>
+    
+      <div class="reports-list">
+        <div v-if="activeCameraAlerts.length === 0" class="reports-empty">
+          No hay alertas activas de cámara.
+        </div>
+      
+        <article
+          v-for="alert in activeCameraAlerts"
+          :key="alert.id"
+          class="report-item pending"
+        >
+          <div class="report-top">
+            <span class="status-pill pending">
+              Activa
+            </span>
+            <span class="report-time">{{ formatLastChecked(alert.createdAt) }}</span>
+          </div>
+        
+          <div class="report-title">
+            {{ alert.cameraName }}
+          </div>
+        
+          <div class="report-desc">
+            {{ alert.description }}
+          </div>
+        
+          <div class="report-foot">
+            Reportado por <b>{{ alert.agentName }}</b>
+          </div>
+        </article>
+      </div>
+    </aside>
   </div>
 </template>
 
@@ -252,6 +301,10 @@ import {
 
 import { getUsers } from '@/services/user.api'
 
+import {
+  getAdminActiveCameraAlerts
+} from '@/services/camera_alert.api'
+
 const toast = useToast()
 const confirm = useConfirm()
 const router = useRouter()
@@ -259,8 +312,6 @@ const router = useRouter()
 function goBack () {
   router.push({ name: 'admin.home' })
 }
-
-const alerts = ref(0)
 
 const kpis = ref({
   totalCameras: 0,
@@ -283,6 +334,53 @@ const cameraModalOpen = ref(false)
 const isEditing = ref(false)
 const savingCamera = ref(false)
 const updatingStatusId = ref(null)
+
+const showCameraAlertsPanel = ref(false)
+const activeCameraAlerts = ref([])
+
+const cameraAlertsCount = computed(() => activeCameraAlerts.value.length)
+
+function openCameraAlerts () {
+  showCameraAlertsPanel.value = true
+}
+
+function closeCameraAlerts () {
+  showCameraAlertsPanel.value = false
+}
+
+function normalizeCameraAlert (alert) {
+  const camera = cameras.value.find(
+    cam => String(cam.id) === String(alert.camera_id)
+  )
+
+  const agent = allAgents.value.find(
+    agent => String(agent.id) === String(alert.agent_id)
+  )
+
+  return {
+    id: alert._id || alert.id,
+    cameraId: alert.camera_id,
+    agentId: alert.agent_id,
+    cameraName: alert.camera_name || camera?.name || alert.camera_id || 'Cámara no identificada',
+    agentName: alert.agent_name || agent?.name || alert.agent_id || 'Agente no identificado',
+    status: alert.status || 'active',
+    description: alert.description || 'Sin descripción registrada.',
+    createdAt: alert.created_at || alert.createdAt || null
+  }
+}
+
+async function loadActiveCameraAlerts () {
+  try {
+    const data = await getAdminActiveCameraAlerts()
+
+    activeCameraAlerts.value = Array.isArray(data)
+      ? data.map(normalizeCameraAlert)
+      : []
+  } catch (e) {
+    console.error('Error cargando alertas activas de cámara', e)
+    activeCameraAlerts.value = []
+  }
+}
 
 const form = reactive({
   id: null,
@@ -493,6 +591,7 @@ async function changeCameraStatus (camera, newStatus) {
     })
 
     await loadKpis()
+    await loadActiveCameraAlerts()
   } catch (e) {
     camera.status = previousStatus
     console.error(e)
@@ -572,6 +671,7 @@ function formatLastChecked (value) {
 onMounted(async () => {
   await loadAgents()
   await loadCameras()
+  await loadActiveCameraAlerts()
   loadKpis()
 })
 </script>
@@ -992,6 +1092,109 @@ onMounted(async () => {
   font-size: 14px;
 }
 
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.25);
+  z-index: 45;
+}
+
+.reports-drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: 360px;
+  max-width: 90vw;
+  background: #ffffff;
+  border-left: 1px solid #e5e7eb;
+  box-shadow: -4px 0 12px rgba(15, 23, 42, 0.15);
+  padding: 16px 16px 20px;
+  z-index: 60;
+}
+
+.reports-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.reports-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.reports-sub {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.reports-list {
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+}
+
+.reports-empty {
+  font-size: 13px;
+  color: #6b7280;
+  padding: 10px 2px;
+}
+
+.report-item {
+  border-radius: 12px;
+  padding: 10px 11px;
+  border: 1px solid #e5e7eb;
+  margin-bottom: 8px;
+  font-size: 13px;
+  background: #fff;
+}
+
+.report-item.pending {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+.report-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.status-pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.status-pill.pending {
+  background: #ffedd5;
+  color: #c05621;
+}
+
+.report-time {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.report-title {
+  font-weight: 700;
+  color: #111827;
+}
+
+.report-desc {
+  margin-top: 2px;
+  color: #4b5563;
+}
+
+.report-foot {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: #6b7280;
+}
 
 /* PrimeVue ConfirmDialog alineado al diseño de esta vista */
 :global(.camera-confirm-dialog) {
