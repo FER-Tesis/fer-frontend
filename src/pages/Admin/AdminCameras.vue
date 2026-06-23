@@ -283,7 +283,7 @@
 </template>
 
 <script setup>
-import { computed, ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted, onBeforeUnmount } from 'vue'
 import Toast from 'primevue/toast'
 import ConfirmDialog from 'primevue/confirmdialog'
 import { useToast } from 'primevue/usetoast'
@@ -302,7 +302,8 @@ import {
 import { getUsers } from '@/services/user.api'
 
 import {
-  getAdminActiveCameraAlerts
+  getAdminActiveCameraAlerts,
+  connectAdminActiveCameraAlertsWS
 } from '@/services/camera_alert.api'
 
 const toast = useToast()
@@ -340,8 +341,9 @@ const activeCameraAlerts = ref([])
 
 const cameraAlertsCount = computed(() => activeCameraAlerts.value.length)
 
-function openCameraAlerts () {
+async function openCameraAlerts () {
   showCameraAlertsPanel.value = true
+  await loadActiveCameraAlerts()
 }
 
 function closeCameraAlerts () {
@@ -379,6 +381,30 @@ async function loadActiveCameraAlerts () {
   } catch (e) {
     console.error('Error cargando alertas activas de cámara', e)
     activeCameraAlerts.value = []
+  }
+}
+
+let adminCameraAlertsWS = null
+
+function connectAdminCameraAlertsWS () {
+  adminCameraAlertsWS = connectAdminActiveCameraAlertsWS()
+
+  adminCameraAlertsWS.onmessage = event => {
+    const msg = JSON.parse(event.data)
+
+    if (msg.type === 'admin-camera-active-alerts-snapshot') {
+      activeCameraAlerts.value = Array.isArray(msg.alerts)
+        ? msg.alerts.map(normalizeCameraAlert)
+        : []
+    }
+  }
+
+  adminCameraAlertsWS.onclose = () => {
+    console.log('Admin Camera Alerts WS cerrado')
+  }
+
+  adminCameraAlertsWS.onerror = error => {
+    console.error('Error en Admin Camera Alerts WS:', error)
   }
 }
 
@@ -561,6 +587,7 @@ async function submitCamera () {
     closeCameraModal()
     await loadCameras()
     await loadKpis()
+    await loadActiveCameraAlerts()
   } catch (e) {
     toast.add({
       severity: 'error',
@@ -672,7 +699,15 @@ onMounted(async () => {
   await loadAgents()
   await loadCameras()
   await loadActiveCameraAlerts()
+  connectAdminCameraAlertsWS()
   loadKpis()
+})
+
+onBeforeUnmount(() => {
+  if (adminCameraAlertsWS) {
+    adminCameraAlertsWS.close()
+    adminCameraAlertsWS = null
+  }
 })
 </script>
 
