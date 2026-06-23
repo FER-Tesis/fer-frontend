@@ -465,28 +465,12 @@ async function submitCamera () {
     await loadKpis()
   } catch (e) {
     console.error('ERROR COMPLETO:', e)
-    console.error('STATUS:', e.response?.status)
-    console.error('DATA:', e.response?.data)
-
-    const status = e.response?.status
-    const data = e.response?.data
-
-    let message = 'No se pudo guardar la cámara.'
-
-    if (typeof data?.detail === 'string') {
-      message = data.detail
-    } else if (Array.isArray(data?.detail)) {
-      message = data.detail.map(item => item.msg).join(', ')
-    } else if (typeof data === 'string') {
-      message = data
-    } else if (data?.message) {
-      message = data.message
-    }
+    console.log('DETAIL DIRECTO:', e.response.data.detail)
 
     toast.add({
       severity: 'error',
-      summary: status === 409 ? 'Registro duplicado' : 'Error',
-      detail: message,
+      summary: e.response.status === 409 ? 'Registro duplicado' : 'Error',
+      detail: e.response.data.detail,
       life: 4000
     })
   } finally {
