@@ -491,6 +491,7 @@ async function submitCamera () {
     })
   } finally {
     savingCamera.value = false
+  }
 }
 
 async function changeCameraStatus (camera, newStatus) {
