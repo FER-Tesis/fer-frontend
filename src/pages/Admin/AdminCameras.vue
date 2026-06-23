@@ -464,9 +464,6 @@ async function submitCamera () {
     await loadCameras()
     await loadKpis()
   } catch (e) {
-    console.error('ERROR COMPLETO:', e)
-    console.log('DETAIL DIRECTO:', e.response.data.detail)
-
     toast.add({
       severity: 'error',
       summary: e.response.status === 409 ? 'Registro duplicado' : 'Error',
