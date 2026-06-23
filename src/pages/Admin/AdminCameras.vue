@@ -465,10 +465,15 @@ async function submitCamera () {
     await loadKpis()
   } catch (e) {
     console.error(e)
+
+    const message =
+      e.response?.data?.detail ||
+      'No se pudo guardar la cámara.'
+
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: 'No se pudo guardar la cámara.',
+      detail: message,
       life: 4000
     })
   } finally {
